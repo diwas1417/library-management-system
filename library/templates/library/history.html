@@ -1,0 +1,57 @@
+{% extends 'library/base.html' %}
+{% block title %}My Borrow History{% endblock %}
+
+{% block content %}
+<h3>📖 Borrow History</h3>
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Borrowed At</th>
+            <th>Due Date</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody id="history-table"></tbody>
+</table>
+
+<script>
+    function fetchHistory() {
+        $.get('/history/', function (data) {
+            let rows = '';
+            data.forEach(record => {
+                rows += `<tr>
+          <td>${record.title}</td>
+          <td>${record.borrowed_at}</td>
+          <td>${record.due_date}</td>
+          <td>${record.is_returned ? '✅ Returned' : '❌ Not Returned'}</td>
+          <td>${!record.is_returned
+                        ? `<button class="btn btn-sm btn-danger" onclick="returnBook('${record.id}')">Return</button>`
+                        : ''
+                    }</td>
+        </tr>`;
+            });
+            $('#history-table').html(rows);
+        });
+    }
+
+    function returnBook(recordId) {
+        $.ajax({
+            url: '/return-book/',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ record_id: recordId }),
+            success: function (res) {
+                alert(res.message);
+                fetchHistory();
+            },
+            error: function (err) {
+                alert('Error: ' + err.responseJSON.error || 'Something went wrong.');
+            }
+        });
+    }
+
+    fetchHistory();
+</script>
+{% endblock %}

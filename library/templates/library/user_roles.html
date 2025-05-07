@@ -1,0 +1,63 @@
+{% extends 'library/base.html' %}
+{% block title %}Manage Users{% endblock %}
+
+{% block content %}
+<h3>👥 Admin: Manage User Roles</h3>
+<table class="table table-bordered mt-3">
+    
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Current Role</th>
+            <th>Promote To</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody id="user-table"></tbody>
+</table>
+
+<script>
+    function fetchUsers() {
+        $.get('/dashboard/users/', function (data) {
+            let rows = '';
+            data.forEach(user => {
+                rows += `<tr>
+        <td>${user.username}</td>
+        <td>${user.role}</td>
+        <td>
+          <select class="form-select" id="role-${user.id}">
+            <option value="librarian">Librarian</option>
+            <option value="admin">Admin</option>
+          </select>
+        </td>
+        <td>
+          <button class="btn btn-sm btn-success" onclick="promote('${user.id}')">Promote</button>
+        </td>
+      </tr>`;
+            });
+            $('#user-table').html(rows);
+        });
+    }
+
+    function promote(userId) {
+        const newRole = $(`#role-${userId}`).val();
+        $.ajax({
+            url: '/dashboard/promote-user/',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ user_id: userId, new_role: newRole }),
+            success: function (res) {
+                alert(res.message);
+                fetchUsers();
+            },
+            error: function (err) {
+                console.log(err);
+                const errorMessage = err.responseJSON?.error || err.responseText || 'Unknown error occurred';
+                alert('Error: ' + errorMessage);
+            }
+        });
+    }
+
+    fetchUsers();
+</script>
+{% endblock %}

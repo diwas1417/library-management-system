@@ -1,0 +1,206 @@
+{% extends 'library/base.html' %}
+{% block title %}Library Home{% endblock %}
+
+{% block content %}
+<h3>📚 Available Books</h3>
+<table class="table table-bordered mt-3">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Author</th>
+            <th>Stock</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody id="book-list"></tbody>
+</table>
+<div id="historySection" style="display: none;">
+    <h4 class="mt-4">📚 Your Borrowed Books</h4>
+    <table class="table table-bordered mt-2">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Borrowed</th>
+                <th>Due</th>
+                <th>Returned</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="borrow-history"></tbody>
+    </table>
+</div>
+<div class="modal fade" id="editModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content p-3">
+            <div class="modal-header">
+                <h5 class="modal-title">✏️ Edit Book</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_book_id">
+                <div class="mb-2"><input type="text" id="edit_title" class="form-control" placeholder="Title"></div>
+                <div class="mb-2"><input type="text" id="edit_author" class="form-control" placeholder="Author"></div>
+                <div class="mb-2"><input type="text" id="edit_isbn" class="form-control" placeholder="ISBN"></div>
+                <div class="mb-2">
+                    <select id="edit_genre" class="form-select"></select>
+                </div>
+                <div class="mb-2"><input type="number" id="edit_stock" class="form-control" placeholder="Stock"></div>
+                <button class="btn btn-success w-100" onclick="saveBookChanges()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const userRole = "{{ request.user.role }}";
+    let loggedInUserId = null;
+    function saveBookChanges() {
+        const bookId = $('#edit_book_id').val();
+        $.ajax({
+            url: `/dashboard/edit-book/${bookId}/`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                title: $('#edit_title').val(),
+                author: $('#edit_author').val(),
+                isbn: $('#edit_isbn').val(),
+                genre: $('#edit_genre').val(),
+                stock: $('#edit_stock').val()
+            }),
+            success: function (res) {
+                alert(res.message);
+                $('#editModal').modal('hide');
+                fetchBooks();
+            },
+            error: function (err) {
+                alert('Error: ' + (err.responseJSON?.error || 'Something went wrong'));
+            }
+        });
+    }
+
+    function fetchBooks() {
+        $.ajax({
+            url: '/books/',
+            method: 'GET',
+            success: function (data) {
+                let rows = '';
+                data.forEach(book => {
+                    rows += `<tr>
+          <td>${book.title}</td>
+          <td>${book.author}</td>
+          <td>${book.stock}</td>
+          <td><button class="btn btn-sm btn-primary" onclick="issueBook('${book.id}')">Issue</button></td>`;
+
+                    // ✅ Now do the conditional logic here
+                    if (userRole === 'admin') {
+                        rows += `<td><button class="btn btn-sm btn-warning" onclick="openEditModal('${book.id}')">Edit</button>;
+                        <button class="btn btn-sm btn-danger" onclick="deleteBook('${book.id}')">Delete</button></td>`
+                    } else {
+                        rows += `<td>—</td>`;
+                    }
+
+                    rows += `</tr>`;
+                });
+
+                $('#book-list').html(rows);
+            }
+        });
+    }
+    function issueBook(bookId) {
+        $.ajax({
+            url: '/books/issue/',  // You may use /dashboard/issue/ if routed that way
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                book_id: bookId,
+                user_id: "{{ request.user.id }}"
+            }),
+            success: function (res) {
+                alert(res.message);
+                fetchBooks(); // Refresh stock count
+            },
+            error: function (err) {
+                alert('Error: ' + (err.responseJSON?.error || err.responseJSON?.message || 'Failed to issue book'));
+            }
+        });
+    }
+
+    function loadGenres(callback = null) {
+        $.get('/dashboard/genres/', function (data) {
+            let options = data.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+
+            // Populate both dropdowns: add + edit
+            $('#genre').html(options);
+            $('#edit_genre').html(options);
+
+            if (callback) callback();  // useful for openEditModal
+        });
+    }
+    function openEditModal(bookId) {
+        $.get(`/books/${bookId}/`, function (book) {
+            $('#edit_book_id').val(book.id);
+            $('#edit_title').val(book.title);
+            $('#edit_author').val(book.author);
+            $('#edit_isbn').val(book.isbn);
+            $('#edit_stock').val(book.stock);
+
+            loadGenres(() => {
+                $('#edit_genre').val(book.genre_id);
+                const modal = new bootstrap.Modal(document.getElementById('editModal'));
+                modal.show(); // ✅ use this for Bootstrap 5
+            });
+        });
+    }
+    function deleteBook(bookId) {
+        if (!confirm('Are you sure you want to delete this book?')) return;
+
+        $.ajax({
+            url: `/dashboard/delete-book/${bookId}/`,
+            method: 'POST',
+            success: function (res) {
+                alert(res.message);
+                fetchBooks(); // refresh the list
+            },
+            error: function (err) {
+                alert('Error: ' + (err.responseJSON?.error || 'Something went wrong'));
+            }
+        });
+    }
+    function fetchBorrowHistory() {
+        $.get('/borrow/history/', function (records) {
+            let rows = '';
+            records.forEach(r => {
+                rows += `<tr>
+        <td>${r.title}</td>
+        <td>${r.borrowed_at}</td>
+        <td>${r.due_date}</td>
+        <td>${r.returned_at || '-'}</td>
+        <td>
+          ${!r.is_returned ? `<button class="btn btn-sm btn-success" onclick="returnBook('${r.id}')">Return</button>` : '✔️ Returned'}
+        </td>
+      </tr>`;
+            });
+            $('#borrow-history').html(rows);
+        });
+    }
+    function returnBook(recordId) {
+        $.ajax({
+            url: '/books/return/',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ record_id: recordId }),
+            success: function (res) {
+                alert(res.message);
+                fetchBooks();
+                fetchBorrowHistory();
+            },
+            error: function (err) {
+                alert('Error: ' + (err.responseJSON?.error || err.responseJSON?.message || 'Failed to return book'));
+            }
+        });
+    }
+    fetchBooks();
+    fetchBorrowHistory();
+    loadGenres()
+    fetchBooks();
+</script>
+{% endblock %}
